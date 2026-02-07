@@ -1,0 +1,8 @@
+# Marmot Rust implementation pinned for Phase 1 reproducibility
+#
+# This project depends on mdk (Marmot Development Kit) as the Rust MLS/Nostr implementation.
+# Pin it by exact commit SHA, do not use "latest" without recording the SHA here.
+#
+# https://github.com/marmot-protocol/mdk
+1ad73229ab712018c078d5295e11ec38e10d6a24
+

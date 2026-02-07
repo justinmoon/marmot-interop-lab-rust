@@ -1,0 +1,6 @@
+Deprecated: this repo no longer vendors or depends on `marmot-ts`.
+
+Historical reference (when Phase 2 briefly used a TS fixture):
+
+- repo: https://github.com/marmot-protocol/marmot-ts
+- rev: 2d89b308d4d8c0f962090815e0386d2623f4430e

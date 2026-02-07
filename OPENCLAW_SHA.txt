@@ -1,0 +1,4 @@
+repo: https://github.com/openclaw/openclaw.git
+ref: origin/main
+sha: 421644940517ae1857281bddf8603aeef9cebf1c
+recorded_at: 2026-02-07
