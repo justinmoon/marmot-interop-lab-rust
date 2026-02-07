@@ -107,6 +107,43 @@ fn out_ok(request_id: Option<String>, result: Option<serde_json::Value>) -> OutM
     OutMsg::Ok { request_id, result }
 }
 
+async fn publish_and_confirm_multi(
+    client: &Client,
+    relays: &[RelayUrl],
+    event: &Event,
+    label: &str,
+) -> anyhow::Result<RelayUrl> {
+    let out = client
+        .send_event_to(relays.to_vec(), event)
+        .await
+        .with_context(|| format!("send_event_to failed ({label})"))?;
+    if out.success.is_empty() {
+        return Err(anyhow!(
+            "event publish had no successful relays ({label}): {out:?}"
+        ));
+    }
+
+    // Confirm we can fetch it back from at least one relay that reported success.
+    for relay_url in out.success.iter().cloned() {
+        let fetched = client
+            .fetch_events_from(
+                [relay_url.clone()],
+                Filter::new().id(event.id),
+                Duration::from_secs(5),
+            )
+            .await
+            .with_context(|| format!("fetch_events_from failed ({label}) relay={relay_url}"))?;
+        if fetched.iter().any(|e| e.id == event.id) {
+            return Ok(relay_url);
+        }
+    }
+
+    Err(anyhow!(
+        "published event not found on any successful relay after send ({label}) id={}",
+        event.id
+    ))
+}
+
 async fn stdout_writer(mut rx: mpsc::UnboundedReceiver<OutMsg>) -> anyhow::Result<()> {
     let mut stdout = tokio::io::stdout();
     while let Some(msg) = rx.recv().await {
@@ -258,16 +295,35 @@ pub async fn daemon_main(relay: &str, state_dir: &Path, giftwrap_lookback_sec: u
                         }
                         client.connect().await;
 
-                        let relay0 = selected[0].clone();
-                        match crate::publish_key_package(&client, &mdk, &keys, relay0).await {
-                            Ok(ev) => {
+                        let (kp_content, kp_tags) = match mdk
+                            .create_key_package_for_event(&keys.public_key(), selected.clone())
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                out_tx.send(out_error(request_id, "mdk_error", format!("{e:#}"))).ok();
+                                continue;
+                            }
+                        };
+                        let ev = match EventBuilder::new(Kind::MlsKeyPackage, kp_content)
+                            .tags(kp_tags)
+                            .sign_with_keys(&keys)
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                out_tx.send(out_error(request_id, "sign_failed", format!("{e:#}"))).ok();
+                                continue;
+                            }
+                        };
+
+                        match publish_and_confirm_multi(&client, &selected, &ev, "keypackage").await {
+                            Ok(_relay_confirmed) => {
                                 out_tx.send(out_ok(request_id, Some(json!({"event_id": ev.id.to_hex()})))).ok();
                                 out_tx.send(OutMsg::KeypackagePublished { event_id: ev.id.to_hex() }).ok();
                             }
                             Err(e) => {
                                 out_tx.send(out_error(request_id, "publish_failed", format!("{e:#}"))).ok();
                             }
-                        }
+                        };
                     }
                     InCmd::SetRelays { request_id, relays } => {
                         match parse_relay_list(relay, &relays) {
@@ -423,15 +479,18 @@ pub async fn daemon_main(relay: &str, state_dir: &Path, giftwrap_lookback_sec: u
                             }
                         };
 
-                        let relay0 = relay_urls.first().cloned().ok_or_else(|| anyhow!("no relays configured"))?;
-                        match crate::publish_and_confirm(&client, relay0, &msg_event, "daemon_send").await {
-                            Ok(_) => {
+                        if relay_urls.is_empty() {
+                            out_tx.send(out_error(request_id, "bad_relays", "no relays configured")).ok();
+                            continue;
+                        }
+                        match publish_and_confirm_multi(&client, &relay_urls, &msg_event, "daemon_send").await {
+                            Ok(_relay_confirmed) => {
                                 let _ = out_tx.send(out_ok(request_id, Some(json!({"event_id": msg_event.id.to_hex()}))));
                             }
                             Err(e) => {
                                 let _ = out_tx.send(out_error(request_id, "publish_failed", format!("{e:#}")));
                             }
-                        };
+                        }
                     }
                     InCmd::Shutdown { request_id } => {
                         out_tx.send(out_ok(request_id, None)).ok();
