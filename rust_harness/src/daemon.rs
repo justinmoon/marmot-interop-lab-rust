@@ -304,6 +304,13 @@ pub async fn daemon_main(relay: &str, state_dir: &Path, giftwrap_lookback_sec: u
                                 continue;
                             }
                         };
+                        // Many public relays reject NIP-70 "protected" events. Keypackages and MLS
+                        // wrapper events are safe to publish without protection, so strip it to keep
+                        // public-relay deployments working.
+                        let kp_tags: Tags = kp_tags
+                            .into_iter()
+                            .filter(|t| !matches!(t.kind(), TagKind::Protected))
+                            .collect();
                         let ev = match EventBuilder::new(Kind::MlsKeyPackage, kp_content)
                             .tags(kp_tags)
                             .sign_with_keys(&keys)
@@ -475,6 +482,22 @@ pub async fn daemon_main(relay: &str, state_dir: &Path, giftwrap_lookback_sec: u
                             Ok(ev) => ev,
                             Err(e) => {
                                 out_tx.send(out_error(request_id, "mdk_error", format!("{e:#}"))).ok();
+                                continue;
+                            }
+                        };
+                        let msg_tags: Tags = msg_event
+                            .tags
+                            .clone()
+                            .into_iter()
+                            .filter(|t| !matches!(t.kind(), TagKind::Protected))
+                            .collect();
+                        let msg_event = match EventBuilder::new(msg_event.kind, msg_event.content)
+                            .tags(msg_tags)
+                            .sign_with_keys(&keys)
+                        {
+                            Ok(ev) => ev,
+                            Err(e) => {
+                                out_tx.send(out_error(request_id, "sign_failed", format!("{e:#}"))).ok();
                                 continue;
                             }
                         };
