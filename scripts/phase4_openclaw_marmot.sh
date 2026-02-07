@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+ROOT_DIR="$(pwd)"
+
 STATE_DIR="${STATE_DIR:-.state}"
 RELAY_URL="${RELAY_URL:-}"
 
@@ -90,7 +92,7 @@ cat > "${OPENCLAW_CONFIG_PATH}" <<JSON
 }
 JSON
 
-OPENCLAW_LOG="${STATE_DIR}/openclaw-marmot/openclaw.log"
+OPENCLAW_LOG="${ROOT_DIR}/${STATE_DIR}/openclaw-marmot/openclaw.log"
 
 (
   cd "${OPENCLAW_DIR}"
@@ -102,7 +104,7 @@ OPENCLAW_LOG="${STATE_DIR}/openclaw-marmot/openclaw.log"
   OPENCLAW_SKIP_CANVAS_HOST=1 \
   OPENCLAW_SKIP_CRON=1 \
   node scripts/run-node.mjs gateway --port "${GW_PORT}" --allow-unconfigured \
-    > "../${OPENCLAW_LOG}" 2>&1
+    > "${OPENCLAW_LOG}" 2>&1
 ) &
 OPENCLAW_PID="$!"
 
