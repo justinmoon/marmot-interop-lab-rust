@@ -222,7 +222,13 @@ export const marmotPlugin: ChannelPlugin<ResolvedMarmotAccount> = {
             `[${resolved.accountId}] welcome_received from=${ev.from_pubkey} group=${ev.nostr_group_id} name=${JSON.stringify(ev.group_name)}`,
           );
           if (resolved.config.autoAcceptWelcomes) {
-            await sidecar.acceptWelcome(ev.wrapper_event_id);
+            try {
+              await sidecar.acceptWelcome(ev.wrapper_event_id);
+            } catch (err) {
+              ctx.log?.debug(
+                `[${resolved.accountId}] failed to accept welcome (stale?): ${err}`,
+              );
+            }
           }
           return;
         }
@@ -252,17 +258,23 @@ export const marmotPlugin: ChannelPlugin<ResolvedMarmotAccount> = {
             return;
           }
 
-          await runtime.channel.reply.handleInboundMessage({
-            channel: "marmot",
-            accountId: resolved.accountId,
-            senderId: ev.from_pubkey,
-            chatType: "group",
-            chatId: ev.nostr_group_id,
-            text: ev.content,
-            reply: async (responseText: string) => {
-              await sidecar.sendMessage(ev.nostr_group_id, responseText);
-            },
-          });
+          try {
+            await runtime.channel.reply.handleInboundMessage({
+              channel: "marmot",
+              accountId: resolved.accountId,
+              senderId: ev.from_pubkey,
+              chatType: "group",
+              chatId: ev.nostr_group_id,
+              text: ev.content,
+              reply: async (responseText: string) => {
+                await sidecar.sendMessage(ev.nostr_group_id, responseText);
+              },
+            });
+          } catch (err) {
+            ctx.log?.error(
+              `[${resolved.accountId}] handleInboundMessage failed: ${err}`,
+            );
+          }
         }
       });
 

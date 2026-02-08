@@ -82,7 +82,11 @@ export class MarmotSidecar {
 
     // Keep stdout strictly for JSONL; log sidecar stderr through OpenClaw logger.
     const rl = readline.createInterface({ input: this.#proc.stdout });
-    rl.on("line", (line) => void this.#handleLine(line));
+    rl.on("line", (line) => {
+      this.#handleLine(line).catch((err) => {
+        getMarmotRuntime().logger?.error(`[marmotd] unhandled error in handleLine: ${err}`);
+      });
+    });
 
     this.#proc.stderr.on("data", (buf) => {
       const s = String(buf);
