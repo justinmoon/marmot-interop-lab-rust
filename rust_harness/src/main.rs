@@ -1190,9 +1190,39 @@ async fn bot_main(
 fn parse_openclaw_prompt(content: &str) -> Option<String> {
     // Exact match required by the harness:
     // openclaw: reply exactly "E2E_OK_<hex token>"
+    //
+    // For easier device automation (adb/agent tooling), also accept:
+    // - `ping` -> reply `pong`
+    // - `openclaw: reply exactly E2E_OK_<hex token>` (no quotes)
+    //
+    // This keeps the strict quoted form (used by existing scenarios) while enabling
+    // a simple manual E2E loop from mobile clients without having to type quotes.
+    if content.trim() == "ping" {
+        return Some("pong".to_string());
+    }
+
     const PREFIX: &str = "openclaw: reply exactly \"";
     if !content.starts_with(PREFIX) || !content.ends_with('"') {
-        return None;
+        const PREFIX_NO_QUOTES: &str = "openclaw: reply exactly ";
+        if !content.starts_with(PREFIX_NO_QUOTES) {
+            return None;
+        }
+        let inner = content[PREFIX_NO_QUOTES.len()..].trim();
+        if !inner.starts_with("E2E_OK_") {
+            return None;
+        }
+        let token = &inner["E2E_OK_".len()..];
+        if token.is_empty() {
+            return None;
+        }
+        if !token
+            .as_bytes()
+            .iter()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        {
+            return None;
+        }
+        return Some(inner.to_string());
     }
     let inner = &content[PREFIX.len()..content.len() - 1];
     if !inner.starts_with("E2E_OK_") {

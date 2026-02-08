@@ -48,7 +48,11 @@ cargo build -p rust_harness
 SIDECAR_CMD="$(pwd)/target/debug/rust_harness"
 
 # Ensure OpenClaw deps exist.
-pnpm -C "${OPENCLAW_DIR}" install >/dev/null
+pnpm_cmd=(pnpm)
+if ! command -v pnpm >/dev/null 2>&1; then
+  pnpm_cmd=(npx --yes pnpm@10)
+fi
+"${pnpm_cmd[@]}" -C "${OPENCLAW_DIR}" install >/dev/null
 
 # Pick a random free port for the gateway so it doesn't conflict with anything else.
 GW_PORT="$(
